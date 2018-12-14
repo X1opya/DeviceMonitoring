@@ -7,6 +7,7 @@ public class DeviceInfoModel {
     public boolean isNetEnable;
     public boolean isWifiEnable;
     public boolean isBluetoothEnable;
+    public boolean isGpsEnable;
     public String wifiConnectedTo;
     public String netConnectedTo;
     public List<String> bluetoothList;
@@ -22,5 +23,6 @@ public class DeviceInfoModel {
         isNetEnable=false;
         isWifiEnable=false;
         isBluetoothEnable=false;
+        isGpsEnable=false;
     }
 }

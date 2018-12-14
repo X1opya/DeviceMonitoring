@@ -11,23 +11,30 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.Switch;
 import android.widget.Toast;
+
+import static x1opya.com.devicemonitoring.JobConnectionChecker.*;
 
 public class MainActivity extends AppCompatActivity implements CompoundButton.OnCheckedChangeListener {
 
     Switch swich;
     JobScheduler scheduler;
+    EditText etPeriodic;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         swich = findViewById(R.id.switch1);
+        etPeriodic = findViewById(R.id.editText);
         swich.setOnCheckedChangeListener(this);
         scheduler = (JobScheduler)getSystemService(JOB_SCHEDULER_SERVICE);
         swich.setChecked(isJobRunning());
+        etPeriodic.setEnabled(!isJobRunning());
         requestPhoneState();
+
     }
 
     private void requestPhoneState(){
@@ -65,7 +72,7 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
         JobInfo info = new JobInfo.Builder(101,service)
                 //.setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPersisted(true)
-                .setPeriodic(5000)
+                .setPeriodic(5000)//переодичность взять с Edit text в окончании
                 .build();
         int resultCode = scheduler.schedule(info);
         if(resultCode == JobScheduler.RESULT_SUCCESS){
@@ -75,12 +82,12 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     }
 
     public void startJob() {
-        Toast.makeText(getApplicationContext(),"Старт жоба",Toast.LENGTH_SHORT).show();
+        Toast.makeText(getApplicationContext(),"Старт жоба",Toast.LENGTH_SHORT).show();//убрать
         runJob();
     }
 
     public void stopJob() {
-        Toast.makeText(getApplicationContext(),"Остановка жоба",Toast.LENGTH_SHORT).show();
+        Toast.makeText(getApplicationContext(),"Остановка жоба",Toast.LENGTH_SHORT).show();//убрать
         scheduler.cancelAll();
     }
 
@@ -88,9 +95,12 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
         if(b){
             startJob();
+            compoundButton.setText("On");
         }else{
             stopJob();
-        }
+            compoundButton.setText("Off");
 
+        }
+        etPeriodic.setEnabled(!isJobRunning());
     }
 }
