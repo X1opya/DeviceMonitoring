@@ -5,6 +5,8 @@ import android.app.job.JobInfo;
 import android.app.job.JobScheduler;
 import android.content.ComponentName;
 import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.PersistableBundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -69,11 +71,24 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
 
     private void runJob(){
         ComponentName service = new ComponentName(this,JobConnectionChecker.class);
-        JobInfo info = new JobInfo.Builder(101,service)
-                //.setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .setPersisted(true)
-                .setPeriodic(5000)//переодичность взять с Edit text в окончании
-                .build();
+        JobInfo info ;
+        int periodicTime;
+        if(etPeriodic.getText().toString().matches("")) periodicTime = 5000;
+        else periodicTime = Integer.parseInt(etPeriodic.getText().toString())*60*1000;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            info = new JobInfo.Builder(101, service)
+                    //.setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                    .setMinimumLatency(periodicTime)
+                    .setPersisted(true)
+                    .setExtras(new PersistableBundle()).build();
+
+        } else {
+            info = new JobInfo.Builder(101, service)
+                    .setPersisted(true)
+                    .setPeriodic(periodicTime)//переодичность взять с Edit text
+
+                    .build();
+        }
         int resultCode = scheduler.schedule(info);
         if(resultCode == JobScheduler.RESULT_SUCCESS){
         }else{
@@ -82,12 +97,10 @@ public class MainActivity extends AppCompatActivity implements CompoundButton.On
     }
 
     public void startJob() {
-        Toast.makeText(getApplicationContext(),"Старт жоба",Toast.LENGTH_SHORT).show();//убрать
         runJob();
     }
 
     public void stopJob() {
-        Toast.makeText(getApplicationContext(),"Остановка жоба",Toast.LENGTH_SHORT).show();//убрать
         scheduler.cancelAll();
     }
 

@@ -10,6 +10,8 @@ import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -37,17 +39,28 @@ import com.google.firebase.database.MutableData;
 import com.google.firebase.database.Transaction;
 import com.google.gson.Gson;
 
+import org.altbeacon.beacon.Beacon;
+import org.altbeacon.beacon.BeaconConsumer;
+import org.altbeacon.beacon.BeaconManager;
+import org.altbeacon.beacon.BeaconParser;
+import org.altbeacon.beacon.RangeNotifier;
+import org.altbeacon.beacon.Region;
+
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static x1opya.com.devicemonitoring.FieldsName.*;
 
-public class JobConnectionChecker extends JobService {
+public class JobConnectionChecker extends JobService  {
     private static final String TAG = "JobConnectionChecker";
     private AsyncJob asinc;
+
 
     @Override
     public boolean onStartJob(final JobParameters jobParameters) {
@@ -58,7 +71,7 @@ public class JobConnectionChecker extends JobService {
                 jobFinished(jobParameters, false);
             }
         };
-        asinc.execute();
+        asinc.execute(this);
         return false;
     }
 
@@ -68,27 +81,32 @@ public class JobConnectionChecker extends JobService {
         return false;
     }
 
-    public class AsyncJob extends AsyncTask<Void, Void, String> {
+    public class AsyncJob extends AsyncTask<Context, Void, String> {
 
         DeviceInfoModel deviceInfo;
+        BeaconManager beaconManager;
+        Context context;
 
         @Override
-        protected String doInBackground(Void... voids) {
+        protected String doInBackground(Context... contexts) {
             deviceInfo = new DeviceInfoModel();
+            context = contexts[0];
             checkConnections();
+            comitData();
             return "Работает...";
         }
 
         private void checkConnections() {
-            netChecker();
             wifiChecker();
+            netChecker();
             bluetoothChecker();
             gpsChecker();
-            comitData();
+
+
         }
 
         private void wifiChecker() {
-            WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            WifiManager wifi = (WifiManager) context.getApplicationContext().getSystemService(WIFI_SERVICE);
             if (wifi.isWifiEnabled()) {
                 deviceInfo.isWifiEnable = true;
                 if (wifi.getConnectionInfo().getSSID() != "0x") //выдает когда не подключен к сети wifi
@@ -117,29 +135,51 @@ public class JobConnectionChecker extends JobService {
         }
 
         private void bluetoothChecker() {
-            BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
-            BluetoothAdapter adapter = manager.getAdapter();
-            BluetoothLeScanner scanner = adapter.getBluetoothLeScanner();
-            if (adapter.isEnabled()) {
-                deviceInfo.isBluetoothEnable = true;
-                scanner.startScan(new ScanCallback() {
+            beaconManager = BeaconManager.getInstanceForApplication(context.getApplicationContext());
+            beaconManager.getBeaconParsers().add(new BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24,d:25-25"));
+            beaconManager.setEnableScheduledScanJobs(true);
+            BluetoothManager  blManager= (BluetoothManager)getSystemService(BLUETOOTH_SERVICE);
+            if(blManager.getAdapter().isEnabled()) {
+                deviceInfo.isBluetoothEnable=true;
+                beaconManager.bind(new BeaconConsumer() {
                     @Override
-                    public void onScanResult(int callbackType, android.bluetooth.le.ScanResult result) {
-                        super.onScanResult(callbackType, result);
+                    public void onBeaconServiceConnect() {
+                        beaconManager.addRangeNotifier(new RangeNotifier() {
+                            @Override
+                            public void didRangeBeaconsInRegion(Collection<Beacon> collection, Region region) {
+                                List<String> list = new ArrayList<>();
+                                if (collection.size() > 0) {
+                                    for (Beacon b : collection) {
+                                        list.add(b.getBluetoothName() + "|" + b.getBluetoothAddress());
+                                    }
+                                }
+                                deviceInfo.bluetoothList = list;
+                            }
+                        });
+                    }
+
+                    @Override
+                    public Context getApplicationContext() {
+                        return null;
+                    }
+
+                    @Override
+                    public void unbindService(ServiceConnection serviceConnection) {
+
+                    }
+
+                    @Override
+                    public boolean bindService(Intent intent, ServiceConnection serviceConnection, int i) {
+                        return false;
                     }
                 });
-                Log.println(Log.ASSERT, TAG, "bluetooth enabled");
-                Log.println(Log.ASSERT, TAG, deviceInfo.bluetoothList.size() + "");
-            } else {
-                deviceInfo.isBluetoothEnable = false;
-                Log.println(Log.ASSERT, TAG, "bluetooth disabled");
-            }
+            }else deviceInfo.isBluetoothEnable=false;
         }
 
         private void gpsChecker() {
             FusedLocationProviderClient client = LocationServices.getFusedLocationProviderClient(getApplicationContext());
 
-            if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 deviceInfo.gps = "permission not granted";
                 deviceInfo.isGpsEnable = false;
                 return;
@@ -181,14 +221,13 @@ public class JobConnectionChecker extends JobService {
             if(firstComit.equals("y")||!deviceInfo.wifiConnectedTo.equals("")) info.put(WIFI_CONNECTED_TO,deviceInfo.wifiConnectedTo+"|"+strDate);
             if(firstComit.equals("y")||!deviceInfo.gps.equals("")) info.put(GPS,deviceInfo.gps+"|"+strDate);
             if(firstComit.equals("y")||deviceInfo.wifiList.size()!=0) info.put(WIFI_LIST,gson.toJson(deviceInfo.wifiList)+"|"+strDate);
-            //if(deviceInfo.bluetoothList.size()!=0) info.put(BLUETOOTH_LIST,gson.toJson(deviceInfo.bluetoothList)+"|"+strDate);
+            if(firstComit.equals("y")||deviceInfo.bluetoothList.size()!=0) info.put(BLUETOOTH_LIST,gson.toJson(deviceInfo.bluetoothList)+"|"+strDate);
             if(firstComit.equals("y")) {
                 s.edit().putString("isFirst","n").apply();
                 myRef.setValue(info);
             }else{
                 myRef.updateChildren(info);
             }
-
         }
     }
 }
